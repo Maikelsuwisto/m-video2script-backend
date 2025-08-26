@@ -1,18 +1,19 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+# app.py
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import shutil
 import os
 import uuid
-
-# Lazy import Whisper and pydub to avoid startup delays
-whisper = None
+import traceback
+from whisper_utils import transcribe_video  # Make sure this function exists
 
 app = FastAPI(title="MS-Video2Script Backend")
 
-# Enable CORS
+# Enable CORS so frontend can call backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict to your frontend URL
+    allow_origins=["*"],  # Allow all origins for now (you can restrict later)
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -21,29 +22,12 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-def get_whisper_model(model_name="tiny"):
-    """Load Whisper model only when needed to save memory/startup time."""
-    global whisper
-    if whisper is None:
-        import whisper
-    return whisper.load_model(model_name)
-
-def transcribe_video(file_path, include_timestamps=False):
-    """Transcribe video using Whisper tiny model"""
-    model = get_whisper_model("tiny")
-    result = model.transcribe(file_path)
-    text = result.get("text", "")
-    # Add timestamps formatting if needed
-    if include_timestamps:
-        # Placeholder: you can format segments with timestamps
-        text = f"[timestamps enabled]\n{text}"
-    return text
-
 @app.post("/transcribe")
 async def transcribe(
     video: UploadFile = File(...),
-    with_timestamps: str = Form("0")
+    with_timestamps: str = Form("0")  # "1" = include timestamps, "0" = no timestamps
 ):
+    # Generate unique filename to avoid collisions
     unique_filename = f"{uuid.uuid4()}_{video.filename}"
     save_path = os.path.join(UPLOAD_DIR, unique_filename)
 
@@ -52,29 +36,41 @@ async def transcribe(
         with open(save_path, "wb") as f:
             shutil.copyfileobj(video.file, f)
 
-        # Transcribe
-        try:
-            transcription_text = transcribe_video(
-                save_path,
-                include_timestamps=(with_timestamps == "1")
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+        # Call your transcription function
+        transcription_text = transcribe_video(save_path, include_timestamps=(with_timestamps=="1"))
 
-        return {"transcription": transcription_text, "audio_url": None}
+        # Optional: generate audio URL (if your function supports it)
+        audio_url = None
+
+        return {"transcription": transcription_text, "audio_url": audio_url}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save/process file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process transcription: {str(e)}")
 
     finally:
+        # Delete the uploaded file after processing
         if os.path.exists(save_path):
             os.remove(save_path)
 
-@app.get("/")
-def root():
-    return {"message": "MS-Video2Script API is running ✅"}
 
-@app.get("/shutdown")
-def shutdown():
-    """Forcefully stops the FastAPI server"""
-    os._exit(0)
+# -----------------------
+# Debug Exception Handler
+# -----------------------
+@app.exception_handler(Exception)
+async def debug_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+            "traceback": traceback.format_exc()
+        },
+    )
+
+
+# -----------------------
+# Health check route
+# -----------------------
+@app.get("/")
+def health():
+    return {"message": "MS-Video2Script API is running ✅"}
