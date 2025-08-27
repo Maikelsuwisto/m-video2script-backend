@@ -16,7 +16,7 @@ app = FastAPI(title="MS-Video2Script Backend")
 # CORS (allow frontend calls)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # adjust if needed
+    allow_origins=[""https://web-production-3f9e.up.railway.app""],  # adjust if needed
     allow_methods=["*"],
     allow_headers=["*"],
 )
