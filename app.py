@@ -25,13 +25,18 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # Load tiny model once (fastest for Railway free tier)
 model = WhisperModel("tiny", device="cpu", compute_type="int8")
 
+# Helper: Convert seconds to HH:MM:SS
+def seconds_to_hms(seconds: float) -> str:
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 @app.post("/transcribe")
 async def transcribe(
     video: UploadFile = File(...),
     with_timestamps: str = Form("0")  # "1" = include timestamps, "0" = no timestamps
 ):
-    # Generate unique filename to avoid collisions
     unique_filename = f"{uuid.uuid4()}_{video.filename}"
     save_path = os.path.join(UPLOAD_DIR, unique_filename)
 
@@ -47,11 +52,11 @@ async def transcribe(
         for seg in segments:
             entry = {"text": seg.text}
             if with_timestamps == "1":
-                entry["start"] = f"{seg.start:.2f}"
-                entry["end"] = f"{seg.end:.2f}"
+                entry["start"] = seconds_to_hms(seg.start)
+                entry["end"] = seconds_to_hms(seg.end)
             transcription.append(entry)
 
-        # Optional: generate audio URL (not implemented yet)
+        # Optional: generate audio URL
         audio_url = None
 
         return {"transcription": transcription, "audio_url": audio_url}
@@ -60,10 +65,8 @@ async def transcribe(
         raise HTTPException(status_code=500, detail=f"Failed to process transcription: {str(e)}")
 
     finally:
-        # Delete the uploaded file after processing
         if os.path.exists(save_path):
             os.remove(save_path)
-
 
 # -----------------------
 # Debug Exception Handler
