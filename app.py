@@ -22,7 +22,7 @@ app.add_middleware(
 )
 
 # Serve React build folder
-app.mount("/static", StaticFiles(directory="build/static"), name="static")
+app.mount("/assets", StaticFiles(directory="os.path.join('build','assets')"), name="assets")
 
 @app.get("/{full_path:path}")
 async def serve_frontend(full_path: str):
