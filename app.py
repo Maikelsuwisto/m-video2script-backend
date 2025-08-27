@@ -22,7 +22,11 @@ app.add_middleware(
 )
 
 # Serve React build folder
-app.mount("/assets", StaticFiles(directory="os.path.join('build','assets')"), name="assets")
+assets_path = os.path.join("build", "assets")
+if not os.path.exists(assets_path):
+    raise RuntimeError(f"Directory '{assets_path}' does not exist")
+
+app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 
 @app.get("/{full_path:path}")
 async def serve_frontend(full_path: str):
